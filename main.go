@@ -5,164 +5,93 @@ import (
 	"sync"
 )
 
-type IntNode struct {
-	Value int
-	Next  *IntNode
+// Stack представляет стек с дженериками
+type Stack[T any] struct {
+	elements map[int]T
+	top      int
+	mu       sync.Mutex
 }
 
-func (n IntNode) GetNext() *IntNode {
-	return n.Next
-}
-
-func NewIntNode(value int) *IntNode {
-	return &IntNode{value, nil}
-}
-
-func NewIntList() *IntList {
-	return &IntList{size: 0, Head: nil, mu: sync.Mutex{}}
-}
-
-type IntList struct {
-	size int
-	Head *IntNode
-	mu   sync.Mutex
-}
-
-func (l *IntList) Size() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.size
-}
-
-func (l *IntList) Get(index int) (*IntNode, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if index < 0 || index >= l.Size() {
-		return nil, fmt.Errorf("неверный индекс списка")
+// NewStack создает новый стек
+func NewStack[T any]() *Stack[T] {
+	return &Stack[T]{
+		elements: make(map[int]T),
+		top:      -1, // Изначально стек пуст
 	}
-	node := l.Head
-	for i := 0; i < index; i++ {
-		node = node.Next
-	}
-	return node, nil
 }
 
-func (l *IntList) Add(el int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// Push добавляет элемент на вершину стека
+func (s *Stack[T]) Push(value T) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	newNode := NewIntNode(el)
-	if l.Head == nil {
-		l.Head = newNode
-	} else {
-		node := l.Head
-		for node.Next != nil {
-			node = node.Next
-		}
-		node.Next = newNode
-	}
-	l.size++
+	s.top++
+	s.elements[s.top] = value
 }
 
-func (l *IntList) Insert(el int, index int) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// Pop удаляет и возвращает элемент с вершины стека
+func (s *Stack[T]) Pop() (T, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if index < 0 || index > l.size {
-		return fmt.Errorf("неверный индекс списка")
-	}
-	newNode := NewIntNode(el)
-	if index == 0 {
-		newNode.Next = l.Head
-		l.Head = newNode
-	} else {
-		node, err := l.Get(index - 1)
-		if err != nil {
-			return err
-		}
-		newNode.Next = node.Next
-		node.Next = newNode
-	}
-	l.size++
-	return nil
-}
-
-func (l *IntList) Remove(index int) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if index < 0 || index >= l.size {
-		return fmt.Errorf("неверный индекс списка")
+	if s.top < 0 {
+		var zeroValue T // Создаем значение нулевого типа
+		return zeroValue, fmt.Errorf("стек пуст")
 	}
 
-	if index == 0 {
-		l.Head = l.Head.Next
-	} else {
-		node := l.Head
-		for i := 0; i < index-1; i++ {
-			node = node.Next
-		}
-		node.Next = node.Next.Next
-	}
-	l.size--
-	return nil
+	value := s.elements[s.top]
+	delete(s.elements, s.top) // Удаляем элемент из карты
+	s.top--
+
+	return value, nil
 }
 
-func (l *IntList) Print() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// Peek возвращает элемент с вершины стека без удаления
+func (s *Stack[T]) Peek() (T, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	node := l.Head
-	if node != nil {
-		for node != nil {
-			fmt.Printf("%d\t", node.Value)
-			node = node.Next
-		}
-		fmt.Printf("\n")
-	} else {
-		fmt.Println("Список пуст!")
+	if s.top < 0 {
+		var zeroValue T // Создаем значение нулевого типа
+		return zeroValue, fmt.Errorf("стек пуст")
 	}
+
+	return s.elements[s.top], nil
+}
+
+// IsEmpty проверяет, пуст ли стек
+func (s *Stack[T]) IsEmpty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.top < 0
+}
+
+// Size возвращает количество элементов в стеке
+func (s *Stack[T]) Size() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.top + 1
 }
 
 func main() {
-	list := NewIntList()
+	stack := NewStack[bool]() // Создаем стек для целых чисел
 
-	var wg sync.WaitGroup
+	stack.Push(true)
+	stack.Push(false)
+	stack.Push(true)
+	stack.Push(true)
+	stack.Push(true)
+	stack.Push(false)
 
-	// Adding elements concurrently
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		fmt.Println("Adding 3")
-		list.Add(3)
-	}()
-	go func() {
-		defer wg.Done()
-		fmt.Println("Adding 2")
-		list.Add(2)
-	}()
-	go func() {
-		defer wg.Done()
-		fmt.Println("Inserting 5 at index 0")
-		list.Insert(5, 0)
-	}()
-	go func() {
-		defer wg.Done()
-		fmt.Println("Inserting 0 at index 0")
-		list.Insert(0, 0)
-	}()
+	fmt.Println("Size of stack:", stack.Size())
+	fmt.Println("Stack:", stack.elements)
+	topElement, _ := stack.Peek()
+	fmt.Println("Top element:", topElement)
 
-	wg.Wait() // Wait for all goroutines to finish
-
-	fmt.Println("Size after additions:", list.Size())
-	list.Print()
-
-	err := list.Remove(1)
-	if err != nil {
-		fmt.Println(err)
+	for !stack.IsEmpty() {
+		value, _ := stack.Pop()
+		fmt.Println("Popped element:", value)
 	}
 
-	fmt.Println("Size after removal:", list.Size())
-	list.Print()
+	fmt.Println("Size of stack after popping:", stack.Size())
 }
